@@ -385,11 +385,9 @@ int main(int argc, char **argv) {
 
     mem_port.out = model.get_mem();
     mem_port.update_b();
-    model.set_mem(mem_port.in);
 
     mmio_port.out = model.get_mmio();
     mmio_port.update_b();
-    model.set_mmio(mmio_port.in);
 
     model.clock();
 
