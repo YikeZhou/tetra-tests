@@ -4,6 +4,7 @@ REPO_ROOT := ..
 ARCILATOR_UTILS_ROOT ?= $(dir $(shell which arcilator))
 BINARY ?= $(REPO_ROOT)/benchmarks/dhrystone.riscv
 CONFIG ?= small-v1.6
+TOP_MODULE ?= RocketSystem
 
 CXXFLAGS = -O3 -Wall -std=c++17
 LDFLAGS =
@@ -20,6 +21,8 @@ BUILD_MODEL ?= $(BUILD_DIR)/rocket
 
 ARCILATOR_ARGS ?= --mlir-timing --print-debug-info --mlir-pass-statistics
 VERILATOR_ARGS ?= -DPRINTF_COND=0 -DASSERT_VERBOSE_COND=0 -DSTOP_COND=0
+ESSENT_ARGS ?= -O3
+KSIM_ARGS ?= --disable-optimizations --emit-comb
 
 TRACE ?= 0
 
@@ -40,6 +43,9 @@ $(BUILD_MODEL).fir: $(SOURCE_MODEL)-$(CONFIG).fir.gz
 
 $(BUILD_MODEL).mlir: $(BUILD_MODEL).fir
 	firtool --ir-hw $< -o $@
+
+$(BUILD_MODEL).ksim.mlir: $(BUILD_MODEL).fir
+	$(KSIM_CIRCT_BINS)/firtool --ir-hw $< -o $@
 
 #===-------------------------------------------------------------------------===
 # Arcilator
@@ -66,6 +72,26 @@ $(BUILD_MODEL)-vtor.a $(BUILD_MODEL)-vtor.h &: $(BUILD_MODEL).sv $(REPO_ROOT)/ve
 	cp $(BUILD_MODEL)-vtor/Vrocket.h $(BUILD_MODEL)-vtor.h
 
 #===-------------------------------------------------------------------------===
+# Essent
+#===-------------------------------------------------------------------------===
+
+$(BUILD_DIR)/$(TOP_MODULE).h: $(BUILD_MODEL).fir
+	essent $(BUILD_MODEL).fir $(ESSENT_ARGS)
+
+$(BUILD_MODEL)-essent.h: $(BUILD_DIR)/$(TOP_MODULE).h
+	cp $(BUILD_DIR)/$(TOP_MODULE).h $(BUILD_MODEL)-essent.h
+
+#===-------------------------------------------------------------------------===
+# Ksim
+#===-------------------------------------------------------------------------===
+
+$(BUILD_MODEL)-ksim.o $(BUILD_MODEL)-ksim.h &: $(BUILD_MODEL).ksim.mlir
+	ksim $< -v -o ${BUILD_MODEL}-ksim.ll --out-header=${BUILD_MODEL}-ksim.h $(KSIM_ARGS)
+	sed -i 's/#define eval RocketSystem//g' ${BUILD_MODEL}-ksim.h
+	opt -O3 -S ${BUILD_MODEL}-ksim.ll | llc -O3 --filetype=obj -o ${BUILD_MODEL}-ksim.o
+	objdump -d ${BUILD_MODEL}-ksim.o > ${BUILD_MODEL}-ksim.s
+
+#===-------------------------------------------------------------------------===
 # Testbench
 #===-------------------------------------------------------------------------===
 
@@ -75,7 +101,13 @@ $(BUILD_MODEL)-model-arc.o: $(SOURCE_MODEL)-model-arc.cpp $(SOURCE_MODEL)-model.
 $(BUILD_MODEL)-model-vtor.o: $(SOURCE_MODEL)-model-vtor.cpp $(SOURCE_MODEL)-model.h $(BUILD_MODEL)-vtor.h
 	$(CXX) $(CXXFLAGS) -I$(ARCILATOR_UTILS_ROOT)/ -I$(BUILD_DIR) -I/$(VERILATOR_ROOT)/include -c $< -o $@
 
-$(BUILD_MODEL)-main: $(SOURCE_MODEL)-main.cpp $(BUILD_MODEL)-model-arc.o $(BUILD_MODEL)-arc.o $(BUILD_MODEL)-model-vtor.o $(BUILD_MODEL)-vtor.a $(VERILATOR_ROOT)/include/verilated.cpp $(VERILATOR_ROOT)/include/verilated_vcd_c.cpp $(VERILATOR_ROOT)/include/verilated_threads.cpp
+$(BUILD_MODEL)-model-essent.o: $(SOURCE_MODEL)-model-essent.cpp $(SOURCE_MODEL)-model.h $(BUILD_MODEL)-essent.h
+	$(CXX) $(CXXFLAGS) -I$(ARCILATOR_UTILS_ROOT)/ -I$(BUILD_DIR) -c $< -o $@
+
+$(BUILD_MODEL)-model-ksim.o: $(SOURCE_MODEL)-model-ksim.cpp $(SOURCE_MODEL)-model.h $(BUILD_MODEL)-ksim.h
+	$(CXX) $(CXXFLAGS) -I$(ARCILATOR_UTILS_ROOT)/ -I$(BUILD_DIR) -c $< -o $@
+
+$(BUILD_MODEL)-main: $(SOURCE_MODEL)-main.cpp $(BUILD_MODEL)-model-arc.o $(BUILD_MODEL)-arc.o $(BUILD_MODEL)-model-vtor.o $(BUILD_MODEL)-vtor.a $(BUILD_MODEL)-model-essent.o $(BUILD_MODEL)-model-ksim.o $(BUILD_MODEL)-ksim.o $(VERILATOR_ROOT)/include/verilated.cpp $(VERILATOR_ROOT)/include/verilated_vcd_c.cpp $(VERILATOR_ROOT)/include/verilated_threads.cpp
 	$(CXX) $(CXXFLAGS) -g $(LDFLAGS) -I$(REPO_ROOT)/elfio $^ -o $@ -DVL_TIME_CONTEXT
 
 #===-------------------------------------------------------------------------===
@@ -89,6 +121,10 @@ run-arcs: RUN_ARGS += --arcs
 run-arcs: run
 run-vtor: RUN_ARGS += --vtor
 run-vtor: run
+run-essent: RUN_ARGS += --essent
+run-essent: run
+run-ksim: RUN_ARGS += --ksim
+run-ksim: run
 run-trace: RUN_ARGS += --trace $(BUILD_MODEL).vcd
 run-trace: run
 
@@ -99,6 +135,10 @@ benchmark-arcs: RUN_ARGS += --arcs
 benchmark-arcs: benchmark
 benchmark-vtor: RUN_ARGS += --vtor
 benchmark-vtor: benchmark
+benchmark-essent: RUN_ARGS += --essent
+benchmark-essent: benchmark
+benchmark-ksim: RUN_ARGS += --ksim
+benchmark-ksim: benchmark
 
 hyperfine: $(BUILD_MODEL)-main
 	hyperfine --warmup=3 "$(BUILD_MODEL)-main $(BINARY) --arcs" "$(BUILD_MODEL)-main $(BINARY) --vtor"

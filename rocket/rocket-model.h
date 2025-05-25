@@ -82,3 +82,5 @@ public:
 
 std::unique_ptr<RocketModel> makeArcilatorModel();
 std::unique_ptr<RocketModel> makeVerilatorModel();
+std::unique_ptr<RocketModel> makeEssentModel();
+std::unique_ptr<RocketModel> makeKsimModel();
