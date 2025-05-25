@@ -3,6 +3,7 @@ This fork adds a few more simulators to the original repository.
 Currently there are still some issues in the following configurations with essent:
 
 - **rocket**: dual-medium, large, dual-large
+- **boom**: small, medium, large, mega
 
 In other situations, all the four simulators appear to run `benchmarks/dhrystone.riscv` successfully.
 
