@@ -82,3 +82,5 @@ public:
 
 std::unique_ptr<BoomModel> makeArcilatorModel();
 std::unique_ptr<BoomModel> makeVerilatorModel();
+std::unique_ptr<BoomModel> makeEssentModel();
+std::unique_ptr<BoomModel> makeKsimModel();
