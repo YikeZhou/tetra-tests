@@ -82,6 +82,8 @@ $(BUILD_MODEL)-main: $(SOURCE_MODEL)-main.cpp $(BUILD_MODEL)-model-arc.o $(BUILD
 # Convenience
 #===-------------------------------------------------------------------------===
 
+build: $(BUILD_MODEL)-main
+
 run: $(BUILD_MODEL)-main
 	$(BUILD_MODEL)-main $(BINARY) $(RUN_ARGS)
 
